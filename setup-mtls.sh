@@ -2,63 +2,69 @@
 
 set -e
 
+OUTPUT_DIR="mtls-output"
 PASSWORD=changeit
 DAYS=365
 
-# Arquivo de extensão para SAN
-echo "[req]"                         > san.cnf
-echo "distinguished_name = req_distinguished_name" >> san.cnf
-echo "req_extensions = req_ext"     >> san.cnf
-echo "[req_distinguished_name]"     >> san.cnf
-echo "[req_ext]"                    >> san.cnf
-echo "subjectAltName = DNS:localhost" >> san.cnf
+mkdir -p "$OUTPUT_DIR"
 
-# 1. Gera a chave privada da CA e certificado autoassinado
+# Arquivo de extensão para SAN
+SAN_CONFIG="$OUTPUT_DIR/san.cnf"
+{
+  echo "[req]"
+  echo "distinguished_name = req_distinguished_name"
+  echo "req_extensions = req_ext"
+  echo "[req_distinguished_name]"
+  echo "[req_ext]"
+  echo "subjectAltName = DNS:localhost"
+} > "$SAN_CONFIG"
+
+# 1. Generate CA private key and self-signed certificate
 echo ""
-echo "# 1. Gera a chave privada da CA e certificado autoassinado..."
-openssl genpkey -algorithm RSA -out ca-key.pem -pkeyopt rsa_keygen_bits:2048
-openssl req -x509 -new -key ca-key.pem -days $DAYS -out ca-cert.pem \
+echo "# 1. Generate CA private key and self-signed certificate..."
+openssl genpkey -algorithm RSA -out "$OUTPUT_DIR/ca-key.pem" -pkeyopt rsa_keygen_bits:2048
+openssl req -x509 -new -key "$OUTPUT_DIR/ca-key.pem" -days $DAYS -out "$OUTPUT_DIR/ca-cert.pem" \
   -subj "//CN=MyCA"
 
-# 2. Gera o certificado do servidor
+# 2. Generate the server certificate
 echo ""
-echo "# 2. Gera o certificado do servidor..."
-openssl genpkey -algorithm RSA -out server-key.pem -pkeyopt rsa_keygen_bits:2048
-openssl req -new -key server-key.pem -out server.csr -subj "//CN=localhost" -config san.cnf
-openssl x509 -req -in server.csr -CA ca-cert.pem -CAkey ca-key.pem -CAcreateserial \
-  -out server-cert.pem -days $DAYS -sha256 -extfile san.cnf -extensions req_ext
+echo "# 2. Generate the server certificate..."
+openssl genpkey -algorithm RSA -out "$OUTPUT_DIR/server-key.pem" -pkeyopt rsa_keygen_bits:2048
+openssl req -new -key "$OUTPUT_DIR/server-key.pem" -out "$OUTPUT_DIR/server.csr" -subj "//CN=localhost" -config "$SAN_CONFIG"
+openssl x509 -req -in "$OUTPUT_DIR/server.csr" -CA "$OUTPUT_DIR/ca-cert.pem" -CAkey "$OUTPUT_DIR/ca-key.pem" -CAcreateserial \
+  -out "$OUTPUT_DIR/server-cert.pem" -days $DAYS -sha256 -extfile "$SAN_CONFIG" -extensions req_ext
 
-# 3. Gera o certificado do cliente (com SAN diferente)
+# 3. Generate client certificate (with different SAN)
 echo ""
-echo "# 3. Gera o certificado do cliente..."
-echo "subjectAltName = DNS:client" >> san.cnf
-openssl genpkey -algorithm RSA -out client-key.pem -pkeyopt rsa_keygen_bits:2048
-openssl req -new -key client-key.pem -out client.csr -subj "//CN=client" -config san.cnf
-openssl x509 -req -in client.csr -CA ca-cert.pem -CAkey ca-key.pem -CAcreateserial \
-  -out client-cert.pem -days $DAYS -sha256 -extfile san.cnf -extensions req_ext
+echo "# 3. Generate client certificate..."
+echo "subjectAltName = DNS:client" >> "$SAN_CONFIG"
+openssl genpkey -algorithm RSA -out "$OUTPUT_DIR/client-key.pem" -pkeyopt rsa_keygen_bits:2048
+openssl req -new -key "$OUTPUT_DIR/client-key.pem" -out "$OUTPUT_DIR/client.csr" -subj "//CN=client" -config "$SAN_CONFIG"
+openssl x509 -req -in "$OUTPUT_DIR/client.csr" -CA "$OUTPUT_DIR/ca-cert.pem" -CAkey "$OUTPUT_DIR/ca-key.pem" -CAcreateserial \
+  -out "$OUTPUT_DIR/client-cert.pem" -days $DAYS -sha256 -extfile "$SAN_CONFIG" -extensions req_ext
 
-# 4. Cria PKCS12 (PFX) para o servidor
+# 4. Create PKCS12 (PFX) for the server
 echo ""
-echo "# 4. Cria PKCS12 (PFX) para o servidor..."
-openssl pkcs12 -export -out server.p12 \
-  -inkey server-key.pem -in server-cert.pem -certfile ca-cert.pem \
+echo "# 4. Create PKCS12 (PFX) for the server..."
+openssl pkcs12 -export -out "$OUTPUT_DIR/server.p12" \
+  -inkey "$OUTPUT_DIR/server-key.pem" -in "$OUTPUT_DIR/server-cert.pem" -certfile "$OUTPUT_DIR/ca-cert.pem" \
   -name server -password pass:$PASSWORD
 
-# 5. Cria PKCS12 (PFX) para o cliente
+# 5. Create PKCS12 (PFX) for the client
 echo ""
-echo "# 5. Cria PKCS12 (PFX) para o cliente..."
-openssl pkcs12 -export -out client.p12 \
-  -inkey client-key.pem -in client-cert.pem -certfile ca-cert.pem \
+echo "# 5. Create PKCS12 (PFX) for the client..."
+openssl pkcs12 -export -out "$OUTPUT_DIR/client.p12" \
+  -inkey "$OUTPUT_DIR/client-key.pem" -in "$OUTPUT_DIR/client-cert.pem" -certfile "$OUTPUT_DIR/ca-cert.pem" \
   -name client -password pass:$PASSWORD
  
-# 6. Cria TrustStore com a CA
+# 6. Create TrustStore with CA
 echo ""
-echo "# 6. Cria truststore.p12 com a CA..."
-keytool -importcert -alias ca -file ca-cert.pem -keystore truststore.p12 \
+echo "# 6. Create truststore.p12 with CA..."
+keytool -importcert -alias ca -file "$OUTPUT_DIR/ca-cert.pem" -keystore "$OUTPUT_DIR/truststore.p12" \
   -storetype PKCS12 -storepass $PASSWORD -noprompt
 
-# Limpeza
-rm -f san.cnf
+# Cleaning
+rm -f "$SAN_CONFIG"
 
 echo ""
-echo "✅ Arquivos PKCS12 gerados com sucesso: server.p12 e client.p12"
+echo "✅ Successfully generated all certificate files in $OUTPUT_DIR/"

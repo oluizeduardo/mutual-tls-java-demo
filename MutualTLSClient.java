@@ -11,14 +11,14 @@ public class MutualTLSClient {
 
         // 1. Loads Client KeyStore
         KeyStore clientStore = KeyStore.getInstance("PKCS12");
-        clientStore.load(new FileInputStream("client.p12"), password);
+        clientStore.load(new FileInputStream("mtls-output/client.p12"), password);
 
         KeyManagerFactory kmf = KeyManagerFactory.getInstance("SunX509");
         kmf.init(clientStore, password);
 
         // 2. Load TrustStore with CA
         KeyStore trustStore = KeyStore.getInstance("PKCS12");
-        trustStore.load(new FileInputStream("truststore.p12"), password);
+        trustStore.load(new FileInputStream("mtls-output/truststore.p12"), password);
 
         TrustManagerFactory tmf = TrustManagerFactory.getInstance("SunX509");
         tmf.init(trustStore);
@@ -33,6 +33,9 @@ public class MutualTLSClient {
         URL url = new URL("https://localhost:8443/hello");
         HttpsURLConnection con = (HttpsURLConnection) url.openConnection();
         con.setRequestMethod("GET");
+
+        int status = con.getResponseCode();
+        System.out.println("HTTP Status: " + status);
 
         BufferedReader in = new BufferedReader(new InputStreamReader(con.getInputStream()));
         String line;

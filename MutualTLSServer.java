@@ -15,14 +15,14 @@ public class MutualTLSServer {
 
         // Load the keystore (certificate + server private key)
         KeyStore keyStore = KeyStore.getInstance("PKCS12");
-        keyStore.load(new FileInputStream("server.p12"), password);
+        keyStore.load(new FileInputStream("mtls-output/server.p12"), password);
 
         KeyManagerFactory kmf = KeyManagerFactory.getInstance("SunX509");
         kmf.init(keyStore, password);
 
         // Load the truststore (trusted CA to validate the client)
         KeyStore trustStore = KeyStore.getInstance("PKCS12");
-        trustStore.load(new FileInputStream("truststore.p12"), password);
+        trustStore.load(new FileInputStream("mtls-output/truststore.p12"), password);
 
         TrustManagerFactory tmf = TrustManagerFactory.getInstance("SunX509");
         tmf.init(trustStore);
